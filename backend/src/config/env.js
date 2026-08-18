@@ -1,8 +1,8 @@
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load .env file
-dotenv.config();
+// Load .env file with override enabled
+dotenv.config({ override: true });
 
 const getEnv = (key, defaultValue) => {
   return process.env[key] || defaultValue;
