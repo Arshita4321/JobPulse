@@ -26,9 +26,8 @@ services:
         sync: false # Populate with your Aiven Cloud Database Name
 
   # 2. Frontend Static Site (React & Vite)
-  - type: web
+  - type: static
     name: jobpulse-frontend
-    env: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     publishDir: dist
