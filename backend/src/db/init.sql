@@ -1,10 +1,7 @@
--- Drop tables if they exist (clean setup)
-DROP TABLE IF EXISTS jobs;
-DROP TABLE IF EXISTS ingestion_runs;
-DROP TABLE IF EXISTS source_health;
+-- Create tables if they do not exist (persists data across server runs)
 
 -- Source Health Table
-CREATE TABLE source_health (
+CREATE TABLE IF NOT EXISTS source_health (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   source VARCHAR(255) NOT NULL UNIQUE,
   status VARCHAR(50) NOT NULL DEFAULT 'HEALTHY', -- HEALTHY, DEGRADED, OPEN, RECOVERING
@@ -20,7 +17,7 @@ CREATE TABLE source_health (
 );
 
 -- Ingestion Runs Table
-CREATE TABLE ingestion_runs (
+CREATE TABLE IF NOT EXISTS ingestion_runs (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   source VARCHAR(255) NOT NULL,
   started_at DATETIME NOT NULL,
@@ -34,11 +31,12 @@ CREATE TABLE ingestion_runs (
   response_status INT NULL,
   duration_ms INT NULL,
   error_message TEXT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_ingestion_runs_created_at (created_at DESC)
 );
 
 -- Jobs Table
-CREATE TABLE jobs (
+CREATE TABLE IF NOT EXISTS jobs (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   source VARCHAR(255) NOT NULL,
   external_id VARCHAR(255) NOT NULL,
@@ -53,12 +51,9 @@ CREATE TABLE jobs (
   content_hash VARCHAR(64) NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT unique_source_external_id UNIQUE (source, external_id)
+  CONSTRAINT unique_source_external_id UNIQUE (source, external_id),
+  INDEX idx_jobs_source (source),
+  INDEX idx_jobs_company (company),
+  INDEX idx_jobs_location (location),
+  INDEX idx_jobs_published_at (published_at DESC)
 );
-
--- Indexes for performance
-CREATE INDEX idx_jobs_source ON jobs(source);
-CREATE INDEX idx_jobs_company ON jobs(company);
-CREATE INDEX idx_jobs_location ON jobs(location);
-CREATE INDEX idx_jobs_published_at ON jobs(published_at DESC);
-CREATE INDEX idx_ingestion_runs_created_at ON ingestion_runs(created_at DESC);
