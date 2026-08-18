@@ -5,7 +5,7 @@ export const jobRepository = {
    * Find a single job by its ID
    */
   async findById(id) {
-    const query = 'SELECT * FROM jobs WHERE id = $1';
+    const query = 'SELECT * FROM jobs WHERE id = ?';
     const result = await db.query(query, [id]);
     return result.rows[0] || null;
   },
@@ -14,7 +14,7 @@ export const jobRepository = {
    * Find a single job by source and external ID
    */
   async findByExternalId(source, externalId) {
-    const query = 'SELECT * FROM jobs WHERE source = $1 AND external_id = $2';
+    const query = 'SELECT * FROM jobs WHERE source = ? AND external_id = ?';
     const result = await db.query(query, [source, externalId]);
     return result.rows[0] || null;
   },
@@ -44,8 +44,7 @@ export const jobRepository = {
       const query = `
         INSERT INTO jobs (
           source, external_id, title, company, location, description, url, published_at, content_hash
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        RETURNING *
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
       const result = await db.query(query, [
         source,
@@ -58,7 +57,10 @@ export const jobRepository = {
         publishedAt,
         contentHash
       ]);
-      return { status: 'inserted', job: result.rows[0] };
+      
+      const insertedId = result.rows.insertId;
+      const insertedJob = await this.findById(insertedId);
+      return { status: 'inserted', job: insertedJob };
     }
 
     // If it exists, check if content hash matches
@@ -67,80 +69,80 @@ export const jobRepository = {
       const updateQuery = `
         UPDATE jobs
         SET last_seen_at = CURRENT_TIMESTAMP
-        WHERE id = $1
-        RETURNING *
+        WHERE id = ?
       `;
-      const result = await db.query(updateQuery, [existing.id]);
-      return { status: 'duplicate', job: result.rows[0] };
+      await db.query(updateQuery, [existing.id]);
+      const updatedJob = await this.findById(existing.id);
+      return { status: 'duplicate', job: updatedJob };
     } else {
       // Content changed - update job content and last_seen_at
       const updateQuery = `
         UPDATE jobs
-        SET title = $2,
-            company = $3,
-            location = $4,
-            description = $5,
-            url = $6,
-            published_at = $7,
-            content_hash = $8,
+        SET title = ?,
+            company = ?,
+            location = ?,
+            description = ?,
+            url = ?,
+            published_at = ?,
+            content_hash = ?,
             last_seen_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
-        WHERE id = $1
-        RETURNING *
+        WHERE id = ?
       `;
-      const result = await db.query(updateQuery, [
-        existing.id,
+      await db.query(updateQuery, [
         title,
         company,
         location,
         description,
         url,
         publishedAt,
-        contentHash
+        contentHash,
+        existing.id
       ]);
-      return { status: 'updated', job: result.rows[0] };
+      const updatedJob = await this.findById(existing.id);
+      return { status: 'updated', job: updatedJob };
     }
   },
 
   /**
-   * Find jobs with pagination, filters, and full text search
+   * Find jobs with pagination, filters, and text search
    */
   async findAll({ source, company, location, search, limit = 20, offset = 0 } = {}) {
     const conditions = [];
     const params = [];
-    let paramIndex = 1;
 
     if (source) {
-      conditions.push(`source = $${paramIndex++}`);
+      conditions.push('source = ?');
       params.push(source);
     }
     if (company) {
-      conditions.push(`company ILIKE $${paramIndex++}`);
+      conditions.push('company LIKE ?');
       params.push(`%${company}%`);
     }
     if (location) {
-      conditions.push(`location ILIKE $${paramIndex++}`);
+      conditions.push('location LIKE ?');
       params.push(`%${location}%`);
     }
     if (search) {
-      conditions.push(`(title ILIKE $${paramIndex} OR description ILIKE $${paramIndex})`);
+      conditions.push('(title LIKE ? OR description LIKE ?)');
       params.push(`%${search}%`);
-      paramIndex++;
+      params.push(`%${search}%`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Get paginated jobs
+    // To match PG's DESC NULLS LAST, we sort by `published_at IS NULL` ascending first.
     const dataQuery = `
       SELECT * FROM jobs
       ${whereClause}
-      ORDER BY published_at DESC NULLS LAST, id DESC
-      LIMIT $${paramIndex++} OFFSET $${paramIndex}
+      ORDER BY published_at IS NULL, published_at DESC, id DESC
+      LIMIT ? OFFSET ?
     `;
     
     // Get total count
     const countQuery = `
-      SELECT COUNT(*) FROM jobs
+      SELECT COUNT(*) as count FROM jobs
       ${whereClause}
     `;
 

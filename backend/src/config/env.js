@@ -17,6 +17,11 @@ const getEnvInt = (key, defaultValue) => {
 
 export const config = {
   port: getEnvInt('PORT', 5000),
+  dbHost: getEnv('DB_HOST', 'localhost'),
+  dbPort: getEnvInt('DB_PORT', 3306),
+  dbUser: getEnv('DB_USER', 'root'),
+  dbPassword: getEnv('DB_PASSWORD', ''),
+  dbName: getEnv('DB_NAME', 'jobpulse'),
   databaseUrl: getEnv('DATABASE_URL', ''),
   primarySourceUrl: getEnv('PRIMARY_SOURCE_URL', 'https://weworkremotely.com/remote-jobs.rss'),
   primarySourceName: getEnv('PRIMARY_SOURCE_NAME', 'weworkremotely'),
@@ -32,6 +37,6 @@ export const config = {
 };
 
 // Simple sanity check validation
-if (!config.databaseUrl) {
-  console.warn('[WARNING] DATABASE_URL is not configured.');
+if (!config.databaseUrl && (!config.dbHost || !config.dbName)) {
+  console.warn('[WARNING] Database is not configured.');
 }

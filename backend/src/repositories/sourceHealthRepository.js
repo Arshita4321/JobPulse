@@ -5,7 +5,7 @@ export const sourceHealthRepository = {
    * Find a source health entry
    */
   async findBySource(source) {
-    const query = 'SELECT * FROM source_health WHERE source = $1';
+    const query = 'SELECT * FROM source_health WHERE source = ?';
     const result = await db.query(query, [source]);
     return result.rows[0] || null;
   },
@@ -24,21 +24,10 @@ export const sourceHealthRepository = {
           last_error, last_response_status, last_response_time_ms, 
           circuit_opened_at, circuit_next_attempt_at, updated_at
         ) VALUES (
-          $1, 
-          $2, 
-          $3, 
-          $4, 
-          $5, 
-          $6, 
-          $7, 
-          $8, 
-          $9, 
-          $10, 
-          CURRENT_TIMESTAMP
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP
         )
-        RETURNING *
       `;
-      const result = await db.query(query, [
+      await db.query(query, [
         source,
         data.status || 'HEALTHY',
         data.consecutive_failures || 0,
@@ -50,13 +39,12 @@ export const sourceHealthRepository = {
         data.circuit_opened_at || null,
         data.circuit_next_attempt_at || null
       ]);
-      return result.rows[0];
+      return this.findBySource(source);
     }
 
     // Prepare update parameters
     const fields = [];
-    const params = [source];
-    let paramIndex = 2;
+    const params = [];
 
     const allowedFields = [
       'status',
@@ -72,22 +60,23 @@ export const sourceHealthRepository = {
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        fields.push(`${field} = $${paramIndex++}`);
+        fields.push(`${field} = ?`);
         params.push(data[field]);
       }
     }
 
     if (fields.length === 0) return existing;
 
+    params.push(source);
+
     const query = `
       UPDATE source_health
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP
-      WHERE source = $1
-      RETURNING *
+      WHERE source = ?
     `;
 
-    const result = await db.query(query, params);
-    return result.rows[0];
+    await db.query(query, params);
+    return this.findBySource(source);
   },
 
   /**

@@ -8,11 +8,13 @@ export const ingestionRepository = {
     const query = `
       INSERT INTO ingestion_runs (
         source, started_at, status, fetched_count, inserted_count, duplicate_count, failed_count, retry_count
-      ) VALUES ($1, $2, 'RUNNING', 0, 0, 0, 0, 0)
-      RETURNING *
+      ) VALUES (?, ?, 'RUNNING', 0, 0, 0, 0, 0)
     `;
     const result = await db.query(query, [source, startedAt]);
-    return result.rows[0];
+    const insertId = result.rows.insertId;
+    
+    const [rows] = await db.query('SELECT * FROM ingestion_runs WHERE id = ?', [insertId]);
+    return rows[0];
   },
 
   /**
@@ -20,8 +22,7 @@ export const ingestionRepository = {
    */
   async updateRun(id, data = {}) {
     const fields = [];
-    const params = [id];
-    let paramIndex = 2;
+    const params = [];
 
     const allowedFields = [
       'completed_at',
@@ -38,22 +39,25 @@ export const ingestionRepository = {
 
     for (const field of allowedFields) {
       if (data[field] !== undefined) {
-        fields.push(`${field} = $${paramIndex++}`);
+        fields.push(`${field} = ?`);
         params.push(data[field]);
       }
     }
 
     if (fields.length === 0) return null;
 
+    // Append the ID to the end for the WHERE clause parameter matching order
+    params.push(id);
+
     const query = `
       UPDATE ingestion_runs
       SET ${fields.join(', ')}
-      WHERE id = $1
-      RETURNING *
+      WHERE id = ?
     `;
 
-    const result = await db.query(query, params);
-    return result.rows[0] || null;
+    await db.query(query, params);
+    const [rows] = await db.query('SELECT * FROM ingestion_runs WHERE id = ?', [id]);
+    return rows[0] || null;
   },
 
   /**
@@ -62,7 +66,7 @@ export const ingestionRepository = {
   async getLatest(source) {
     const query = `
       SELECT * FROM ingestion_runs
-      WHERE source = $1
+      WHERE source = ?
       ORDER BY started_at DESC
       LIMIT 1
     `;
@@ -90,9 +94,9 @@ export const ingestionRepository = {
     const query = `
       SELECT * FROM ingestion_runs
       ORDER BY started_at DESC
-      LIMIT $1 OFFSET $2
+      LIMIT ? OFFSET ?
     `;
-    const countQuery = 'SELECT COUNT(*) FROM ingestion_runs';
+    const countQuery = 'SELECT COUNT(*) as count FROM ingestion_runs';
 
     const [dataResult, countResult] = await Promise.all([
       db.query(query, [limit, offset]),

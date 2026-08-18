@@ -13,7 +13,7 @@ export const apiRouter = express.Router();
 let isIngestingInProgress = false;
 
 /**
- * Health endpoint checking PostgreSQL connection
+ * Health endpoint checking MySQL connection
  */
 apiRouter.get('/health', async (req, res) => {
   try {
