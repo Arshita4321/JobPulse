@@ -11,7 +11,7 @@ export const SourceHealthCard = ({ source }) => {
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col justify-between transition-all hover:border-slate-700">
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex flex-col justify-between card-hover">
       <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
         <div>
           <h4 className="text-slate-100 font-bold uppercase tracking-wider text-sm">{source.source}</h4>

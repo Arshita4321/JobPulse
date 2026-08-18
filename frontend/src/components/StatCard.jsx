@@ -12,7 +12,7 @@ export const StatCard = ({ title, value, subtext, icon: Icon, color = 'blue' }) 
   const selectedColor = colorMap[color] || colorMap.blue;
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex items-center justify-between transition-all hover:border-slate-700">
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg flex items-center justify-between card-hover">
       <div>
         <span className="text-slate-400 text-xs font-semibold uppercase tracking-wider block mb-1">
           {title}
