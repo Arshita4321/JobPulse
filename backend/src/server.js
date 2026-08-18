@@ -19,7 +19,7 @@ app.use(cors({
 }));
 
 // Route mounting
-app.use(sandboxRouter); // Mounts /source under sandbox
+app.use('/api/sandbox', sandboxRouter); // Mounts /source under sandbox
 app.use(apiRouter); // Mounts /health, /api/jobs, /api/sources, /api/ingestion/runs, etc.
 
 // Centralized error handler
