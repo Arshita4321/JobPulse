@@ -167,7 +167,7 @@ export default function App() {
 
       {/* Main Header navigation */}
       <header className="border-b border-slate-900 bg-slate-950/80 backdrop-blur sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-sky-500/10 p-2 rounded-lg border border-sky-500/20">
               <Activity className="w-6 h-6 text-sky-400" />
