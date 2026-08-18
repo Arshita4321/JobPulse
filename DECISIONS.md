@@ -4,7 +4,7 @@
 I chose a public RSS feed source (WeWorkRemotely) rather than browser automation against commercial job boards (like LinkedIn or Indeed) because the assignment explicitly permits a public job-board RSS/API source, and my goal was to demonstrate ingestion resilience without attempting to circumvent authentication, CAPTCHA, or anti-bot protections. 
 
 This strategy prioritizes:
-- **Zero Evasion Risk**: Eliminates the operational and legal risks of IP bans, crawler blocks, or ToS violations.
+- **Reduced Evasion and Compliance Risk**: Using a permitted public RSS source avoids the need to bypass authentication, CAPTCHA, or anti-bot controls on protected platforms.
 - **Architectural Isolation**: Uses an adapter interface that abstracts raw fetching from core orchestration. This proves we can ingest from any endpoint simply by mapping payload schema keys without changing the core engine.
 
 ---

@@ -1,6 +1,6 @@
 # JobPulse — Resilient Job Listing Ingestion Pipeline
 
-JobPulse is a production-ready, highly resilient Node.js & React web application that periodically retrieves job listings from a public RSS/API feed, processes them through a multi-layered validation and deduplication pipeline, and persists them in MySQL. 
+JobPulse is a resilient job-listing ingestion pipeline built with Node.js, React, and MySQL. It demonstrates production-minded ingestion patterns including bounded retries, rate limiting, circuit breaking, validation, and deduplication.
 
 The primary goal of this project is to showcase **ingestion resilience**—how an automated ingestion pipeline handles rate limits (HTTP 429), server crashes (HTTP 5xx), slow network connections, validation anomalies, database constraints, and source schema shifts gracefully without crashing or flooding servers.
 
@@ -9,63 +9,33 @@ The primary goal of this project is to showcase **ingestion resilience**—how a
 ## 1. System Architecture
 
 ```text
-                     PUBLIC JOB SOURCE
-                       RSS / PUBLIC API
-                              |
-                              v
-                     +------------------+
-                     |  Source Adapter  |
-                     +--------+---------+
-                              |
-                              v
-                     +------------------+
-                     |   Rate Limiter   |
-                     +--------+---------+
-                              |
-                              v
-                     +------------------+
-                     |      Fetch       |
-                     +--------+---------+
-                              |
-                    +----------+----------+
-                    |                     |
-                 SUCCESS                FAILURE
-                    |                     |
-                    v                     v
-               +---------+          +-----------+
-               |  Parse  |          |   Retry   |
-               +----+----+          +-----+-----+
-                    |                     |
-                    v               Exponential
-               +---------+            Backoff
-               | Validate|                |
-               +----+----+                v
-                    |              Max retries?
-                    v                   |
-               +---------+        +------+------+
-               |Normalize|        |             |
-               +----+----+       NO            YES
-                    |             |             |
-                    v             |             v
-               +---------+        |       Circuit Breaker
-               | Dedup   |        |             |
-               +----+----+        |             v
-               |         |        |       Mark unhealthy
-               v         v        v
-               +----------+       |
-               |  MySQL   | <-----+
-               +----+-----+
-                    |
-                    v
-               +----------+
-               | Express  |
-               | REST API |
-               +----+-----+
-                    |
-                    v
-               +----------+
-               | React UI |
-               +----------+
+                 Source Adapter
+                      |
+                      v
+                Circuit Breaker
+                      |
+                      v
+                 Rate Limiter
+                      |
+                      v
+                    Fetch
+                   /     \
+              success    failure
+                 |          |
+                 v          v
+               Parse      Retry
+                 |          |
+                 v          |
+              Validate <----+
+                 |
+                 v
+              Normalize
+                 |
+                 v
+               Dedup
+                 |
+                 v
+               MySQL
 ```
 
 ### Key Component Separation:
@@ -99,14 +69,15 @@ Each request is wrapped with an `AbortController` timeout (e.g., 10,000ms). If a
 ### Scenario 4: Repeated Failure (Circuit Opens)
 If failures meet the threshold (default: 3 consecutive failures), the circuit transitions to **OPEN**. Requests to the source are temporarily blocked. After the cooldown period (default: 60 seconds), it transitions to **HALF_OPEN** to test server recovery.
 
-### Scenario 5: Duplicate Ingestion
-Deduplication is performed using a `content_hash` of structural job fields combined with a unique database constraint on `(source, external_id)`. If a duplicate is found, the `last_seen_at` date updates without writing duplicate rows.
+### Scenario 5: Duplicate Ingestion & Hash Checking
+- **`source` + `external_id`**: Identifies whether a listing has already been ingested.
+- **`content_hash`**: If the job exists, the engine compares its new content hash to the stored hash. If they match, it simply updates `last_seen_at`. If the content has changed (e.g., a salary update or updated description), it updates the database columns and sets `updated_at`.
 
-### Scenario 6: Malformed Record
-If a job is missing required structural elements, the validation service rejects the record, increments the failed record count, and proceeds with the rest of the batch.
+### Scenario 6: Malformed Record (Batch Continuation)
+If a single job in a batch is missing required structural elements, the validation service logs a warning, rejects only that record (incrementing `failed_count`), and continues parsing the remaining valid listings in the batch.
 
-### Scenario 7: Schema-Change Guard
-If the remote XML feed updates its key layout (e.g., using `jobTitle` instead of `title`), the parser/validation service detects the missing structural fields, rejects the batch, and updates source health to `DEGRADED`/`OPEN` to protect the database from pollution.
+### Scenario 7: Schema-Change Guard (Feed-Wide Failure)
+If the remote XML feed changes entirely (e.g. key elements disappear, yielding a parse failure or 0 valid listings), the parser throws an exception. This is treated as a feed-wide service degradation, which triggers a circuit breaker failure, protecting the database from batch processing corrupt structures.
 
 ---
 
@@ -119,12 +90,12 @@ Websites use several key signals on their perimeter to detect and identify autom
 Automated-client detection signals
 │
 ├── Request frequency (High volumes in short durations)
-├── Burst behavior (Spiky connection pools rather than human mouse movements)
+├── Burst behavior (Rapid repeated requests rather than normal human pacing)
 ├── Missing/abnormal HTTP headers (Absent User-Agent, Accept, or host indicators)
 ├── Repeated identical request patterns (Identical route traversals at rigid clock times)
 ├── Session/cookie behavior (Lack of cookie persistence or cookie processing)
 ├── TLS/network fingerprints (TLS version, cipher suites, or TCP/IP window sizes)
-├── Browser/headless fingerprints (WebDriver presence, user-agent/navigator mismatches)
+├── Browser/headless fingerprints (WebDriver presence, navigator mismatches)
 ├── CAPTCHA challenges (Triggers when heuristic behavior looks abnormal)
 └── IP reputation/rate limiting (Known hosting ranges or datacenter subnets)
 ```
@@ -148,17 +119,40 @@ Primary RSS Source (WeWorkRemotely)
         Circuit OPEN
                │
                ▼
-   Fallback to Secondary RSS/API Adapter (e.g. RemoteOK RSS or StackOverflow API)
+   Iterate to Next Registered Adapter (e.g. secondary permitted API/RSS sources)
                │
                ▼ (All Sources Open)
-   Fallback to Local Database Cache (Serve stale listings with warning banner)
+   Serve Cached Dataset (Serve last known listings stored in local MySQL)
 ```
 
-Because JobPulse is built around a structured adapter interface, new adapters conforming to the same interface can be added to the engine registry without altering any core logic. When the primary adapter fails, the scheduler can iterate down the registry to query alternative permitted public endpoints.
+- **Adapter Fallback**: The adapter architecture allows a secondary permitted RSS/API source to be registered without modifying the ingestion engine. For the submitted demo, WeWorkRemotely is the only live external source.
+- **Offline Cache**: Previously ingested listings remain available in MySQL, allowing the UI to continue showing the last known dataset while live synchronization is unavailable.
 
 ---
 
-## 5. Local Setup & Installation
+## 5. Live Demo Flow
+
+To demonstrate the resilience mechanics in action:
+1. **Normal Ingestion**: Trigger a run for `public-rss`. Confirm 100 jobs are loaded.
+2. **Duplicate Detection**: Run the same ingestion. Confirm `New=0, Duplicates=100` shows correct DB tracking.
+3. **HTTP 429 Simulation**: Trigger the `429 Rate Limit` scenario. Observe pacing wait using the `Retry-After` header.
+4. **HTTP 503 Outage**: Trigger the `503 Outage` scenario. Observe retries using backoff and jitter.
+5. **Circuit Tripping**: Run `Repeated Failures`. After the 3rd failure, verify the circuit turns **OPEN** on the **Source Health** page.
+6. **Recovery**: Wait for the cooldown period. Trigger a simulation and observe state recovery to **CLOSED**.
+7. **Schema Mismatch**: Run `Schema Change` and confirm corrupt structures are safely rejected without polluting database tables.
+
+---
+
+## 6. Production Limitations
+
+The submitted implementation intentionally keeps the architecture lightweight for demo simplicity:
+- **In-process Scheduler**: Relies on `node-cron`. Horizontal scaling would require an external distributed queue (like BullMQ + Redis) and distributed locking.
+- **Single Live Feed**: Relies on a single live source. Additional source adapters would need to be added to the registry for active production failover.
+- **Centralized Observability**: Production deployments would use centralized logging (e.g., Winston, ELK) and metrics alerts instead of in-database status tables.
+
+---
+
+## 7. Local Setup & Installation
 
 ### Environment Variables (.env)
 Create a `.env` file in `/backend` using these parameters:
@@ -169,6 +163,7 @@ DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=jobpulse
+DB_SSL_CA=                       # Optional: Path to Aiven CA cert file
 PRIMARY_SOURCE_URL=https://weworkremotely.com/remote-jobs.rss
 PRIMARY_SOURCE_NAME=weworkremotely
 REQUEST_TIMEOUT_MS=10000

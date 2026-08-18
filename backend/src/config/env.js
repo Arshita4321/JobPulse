@@ -34,6 +34,7 @@ export const config = {
   ingestionIntervalMinutes: getEnvInt('INGESTION_INTERVAL_MINUTES', 5),
   frontendUrl: getEnv('FRONTEND_URL', 'http://localhost:5173'),
   nodeEnv: getEnv('NODE_ENV', 'development'),
+  dbSslCa: getEnv('DB_SSL_CA', ''),
 };
 
 // Simple sanity check validation
