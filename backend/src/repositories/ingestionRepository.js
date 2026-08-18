@@ -13,7 +13,7 @@ export const ingestionRepository = {
     const result = await db.query(query, [source, startedAt]);
     const insertId = result.rows.insertId;
     
-    const [rows] = await db.query('SELECT * FROM ingestion_runs WHERE id = ?', [insertId]);
+    const { rows } = await db.query('SELECT * FROM ingestion_runs WHERE id = ?', [insertId]);
     return rows[0];
   },
 
@@ -56,7 +56,7 @@ export const ingestionRepository = {
     `;
 
     await db.query(query, params);
-    const [rows] = await db.query('SELECT * FROM ingestion_runs WHERE id = ?', [id]);
+    const { rows } = await db.query('SELECT * FROM ingestion_runs WHERE id = ?', [id]);
     return rows[0] || null;
   },
 
