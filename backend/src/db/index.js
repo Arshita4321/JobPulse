@@ -16,19 +16,22 @@ if (config.dbSslCa) {
   }
 }
 
-// Enforce strict verification when CA is present, fallback to encrypted connection without verification in prod/Aiven if no CA is set
+// Enforce strict verification in production mode, fallback to no-SSL only in development if no CA is set
 const getSslConfig = (hostOrUri) => {
-  if (caCert) {
+  if (config.nodeEnv === 'production') {
+    if (!caCert) {
+      throw new Error('[DB CONFIG ERROR] DB_SSL_CA environment variable is required in production mode for strict certificate verification.');
+    }
     return {
       ca: caCert,
       rejectUnauthorized: true
     };
   }
-  
-  const isCloudHost = hostOrUri && (hostOrUri.includes('aivencloud.com') || hostOrUri.includes('render.com'));
-  if (config.nodeEnv === 'production' || isCloudHost) {
+
+  if (caCert) {
     return {
-      rejectUnauthorized: false
+      ca: caCert,
+      rejectUnauthorized: true
     };
   }
   
