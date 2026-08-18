@@ -12,8 +12,8 @@ The primary goal of this project is to showcase **ingestion resilience**—how a
                  Source Adapter
                       |
                       v
-                Circuit Breaker
-                      |
+                Circuit Breaker  <------- If OPEN, halts run immediately
+                      |                   without querying rate limiter or server
                       v
                  Rate Limiter
                       |
@@ -23,8 +23,8 @@ The primary goal of this project is to showcase **ingestion resilience**—how a
               success    failure
                  |          |
                  v          v
-               Parse      Retry
-                 |          |
+               Parse      Retry  <------- Executes up to 3 retries (4 total attempts)
+                 |          |             using exponential backoff and jitter
                  v          |
               Validate <----+
                  |
@@ -57,7 +57,7 @@ The primary goal of this project is to showcase **ingestion resilience**—how a
 If the source returns a `429 Too Many Requests` response:
 1. The retry service halts regular request flow.
 2. It parses the `Retry-After` header if provided by the server.
-3. If valid, the system pauses execution for the requested period (e.g. 2 seconds) before retrying.
+3. If valid, the system pauses execution and **waits at least the requested duration** before retrying.
 4. If failures persist, the circuit breaker opens.
 
 ### Scenario 2: Source Returns HTTP 5xx
@@ -67,11 +67,13 @@ For transient server errors (500, 502, 503, 504), the pipeline automatically ret
 Each request is wrapped with an `AbortController` timeout (e.g., 10,000ms). If a fetch hangs, it is aborted, logged, and treated as a retryable transient failure.
 
 ### Scenario 4: Repeated Failure (Circuit Opens)
-If failures meet the threshold (default: 3 consecutive failures), the circuit transitions to **OPEN**. Requests to the source are temporarily blocked. After the cooldown period (default: 60 seconds), it transitions to **HALF_OPEN** to test server recovery.
+- **`MAX_RETRIES` Configuration**: `MAX_RETRIES=3` means that up to **3 retries** are executed after the initial attempt fails, resulting in up to **4 total HTTP attempts** per ingestion run.
+- **Circuit Breaker Counting**: The failure threshold of 3 counts **failed ingestion runs** (i.e., runs where all 4 attempts failed), rather than individual HTTP attempts.
+- **Circuit Trip**: If 3 consecutive runs fail, the circuit transitions to **OPEN**. Requests to the source are temporarily blocked. After the cooldown period (default: 60 seconds), it transitions to **HALF_OPEN** to test server recovery.
 
 ### Scenario 5: Duplicate Ingestion & Hash Checking
 - **`source` + `external_id`**: Identifies whether a listing has already been ingested.
-- **`content_hash`**: If the job exists, the engine compares its new content hash to the stored hash. If they match, it simply updates `last_seen_at`. If the content has changed (e.g., a salary update or updated description), it updates the database columns and sets `updated_at`.
+- **`content_hash`**: Calculated using specific job fields: `title`, `company`, `description`, and `link` (url). If the job exists, the engine compares its new content hash to the stored hash. If they match, it simply updates `last_seen_at`. If the content has changed (e.g., an updated description), it updates the database columns and sets `updated_at`.
 
 ### Scenario 6: Malformed Record (Batch Continuation)
 If a single job in a batch is missing required structural elements, the validation service logs a warning, rejects only that record (incrementing `failed_count`), and continues parsing the remaining valid listings in the batch.
@@ -163,7 +165,7 @@ DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=jobpulse
-DB_SSL_CA=                       # Optional: Path to Aiven CA cert file
+DB_SSL_CA=                       # Path to Aiven CA cert file (Mandatory in production)
 PRIMARY_SOURCE_URL=https://weworkremotely.com/remote-jobs.rss
 PRIMARY_SOURCE_NAME=weworkremotely
 REQUEST_TIMEOUT_MS=10000
