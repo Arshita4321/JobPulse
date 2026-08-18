@@ -1,0 +1,37 @@
+services:
+  # 1. Backend Web Service (Node.js & Express)
+  - type: web
+    name: jobpulse-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false # Set to your Frontend Static Site URL after creation (to allow CORS)
+      # MySQL Database Configuration
+      - key: DB_HOST
+        sync: false # Populate with your Aiven Cloud Hostname
+      - key: DB_PORT
+        value: 13844
+      - key: DB_USER
+        sync: false # Populate with your Aiven Cloud Username
+      - key: DB_PASSWORD
+        sync: false # Populate with your Aiven Cloud Password
+      - key: DB_NAME
+        sync: false # Populate with your Aiven Cloud Database Name
+
+  # 2. Frontend Static Site (React & Vite)
+  - type: web
+    name: jobpulse-frontend
+    env: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    publishDir: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false # Set to your Backend Web Service URL (e.g. https://jobpulse-backend.onrender.com)
