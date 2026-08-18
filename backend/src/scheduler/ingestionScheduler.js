@@ -4,17 +4,15 @@ import { publicRssAdapter } from '../adapters/publicRssAdapter.js';
 import { ingestionEngine } from '../services/ingestionEngine.js';
 
 let isCronRunning = false;
+let cronTask = null;
 
 export const startScheduler = () => {
   const intervalMinutes = config.ingestionIntervalMinutes;
-  
-  // Format cron expression: run every N minutes
-  // E.g., '*/5 * * * *'
   const cronExpression = `*/${intervalMinutes} * * * *`;
   
   console.log(`[SCHEDULER] Initializing ingestion cron scheduler: "${cronExpression}"`);
 
-  cron.schedule(cronExpression, async () => {
+  cronTask = cron.schedule(cronExpression, async () => {
     if (isCronRunning) {
       console.warn('[SCHEDULER] Previous scheduled ingestion run still active. Skipping overlap.');
       return;
@@ -30,4 +28,12 @@ export const startScheduler = () => {
       isCronRunning = false;
     }
   });
+};
+
+export const stopScheduler = () => {
+  if (cronTask) {
+    console.log('[SCHEDULER] Stopping scheduled cron job...');
+    cronTask.stop();
+    cronTask = null;
+  }
 };

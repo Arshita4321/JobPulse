@@ -5,7 +5,10 @@ import { config } from '../config/env.js';
 const poolConfig = config.databaseUrl
   ? {
       uri: config.databaseUrl,
-      multipleStatements: true // Enabled for running schema init scripts
+      multipleStatements: true, // Enabled for running schema init scripts
+      ssl: config.nodeEnv === 'production' || config.databaseUrl.includes('aivencloud.com')
+        ? { rejectUnauthorized: false }
+        : undefined
     }
   : {
       host: config.dbHost,
@@ -13,7 +16,10 @@ const poolConfig = config.databaseUrl
       user: config.dbUser,
       password: config.dbPassword,
       database: config.dbName,
-      multipleStatements: true // Enabled for running schema init scripts
+      multipleStatements: true, // Enabled for running schema init scripts
+      ssl: config.nodeEnv === 'production' || (config.dbHost && config.dbHost.includes('aivencloud.com'))
+        ? { rejectUnauthorized: false }
+        : undefined
     };
 
 console.log(`[DB] Creating MySQL connection pool to host: ${config.dbHost || 'URI'}`);

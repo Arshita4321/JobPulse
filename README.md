@@ -27,45 +27,45 @@ The primary goal of this project is to showcase **ingestion resilience**—how a
                      |      Fetch       |
                      +--------+---------+
                               |
-                   +----------+----------+
-                   |                     |
-                SUCCESS                FAILURE
-                   |                     |
-                   v                     v
-              +---------+          +-----------+
-              |  Parse  |          |   Retry   |
-              +----+----+          +-----+-----+
-                   |                     |
-                   v               Exponential
-              +---------+            Backoff
-              | Validate|                |
-              +----+----+                v
-                   |              Max retries?
-                   v                   |
-              +---------+        +------+------+
-              |Normalize|        |             |
-              +----+----+       NO            YES
-                   |             |             |
-                   v             |             v
-              +---------+        |       Circuit Breaker
-              | Dedup   |        |             |
-              +----+----+        |             v
-                   |             |       Mark unhealthy
-                   v             |
-              +----------+       |
-              |  MySQL   | <-----+
-              +----+-----+
-                   |
-                   v
-              +----------+
-              | Express  |
-              | REST API |
-              +----+-----+
-                   |
-                   v
-              +----------+
-              | React UI |
-              +----------+
+                    +----------+----------+
+                    |                     |
+                 SUCCESS                FAILURE
+                    |                     |
+                    v                     v
+               +---------+          +-----------+
+               |  Parse  |          |   Retry   |
+               +----+----+          +-----+-----+
+                    |                     |
+                    v               Exponential
+               +---------+            Backoff
+               | Validate|                |
+               +----+----+                v
+                    |              Max retries?
+                    v                   |
+               +---------+        +------+------+
+               |Normalize|        |             |
+               +----+----+       NO            YES
+                    |             |             |
+                    v             |             v
+               +---------+        |       Circuit Breaker
+               | Dedup   |        |             |
+               +----+----+        |             v
+               |         |        |       Mark unhealthy
+               v         v        v
+               +----------+       |
+               |  MySQL   | <-----+
+               +----+-----+
+                    |
+                    v
+               +----------+
+               | Express  |
+               | REST API |
+               +----+-----+
+                    |
+                    v
+               +----------+
+               | React UI |
+               +----------+
 ```
 
 ### Key Component Separation:
@@ -110,17 +110,55 @@ If the remote XML feed updates its key layout (e.g., using `jobTitle` instead of
 
 ---
 
-## 3. Detection Surface Documentation (Responsible Traffic)
+## 3. Detection Surface & Bot Boundaries
 
-Websites detect automated traffic using several key characteristics. JobPulse is designed to use **responsible, respectful traffic patterns** rather than trying to spoof or bypass security:
-1. **Pacing Delay**: Enforces a `REQUEST_DELAY_MS` delay between ingestion sessions to avoid burst traffic spikes.
-2. **Exponential Backoff**: Instead of aggressive, continuous retrying on failure, the system backs off.
-3. **Honoring Status Codes**: The system respects server indicators (`Retry-After`, `429`, `503`) and opens the circuit, rather than trying to rotate IPs, spoof browser fingerprints, or bypass access controls.
-4. **User-Agent Hygiene**: Sends clean, transparent `User-Agent` headers identifying the service.
+### What specifically gives an automated client away?
+Websites use several key signals on their perimeter to detect and identify automated scrapers and bots:
+
+```text
+Automated-client detection signals
+│
+├── Request frequency (High volumes in short durations)
+├── Burst behavior (Spiky connection pools rather than human mouse movements)
+├── Missing/abnormal HTTP headers (Absent User-Agent, Accept, or host indicators)
+├── Repeated identical request patterns (Identical route traversals at rigid clock times)
+├── Session/cookie behavior (Lack of cookie persistence or cookie processing)
+├── TLS/network fingerprints (TLS version, cipher suites, or TCP/IP window sizes)
+├── Browser/headless fingerprints (WebDriver presence, user-agent/navigator mismatches)
+├── CAPTCHA challenges (Triggers when heuristic behavior looks abnormal)
+└── IP reputation/rate limiting (Known hosting ranges or datacenter subnets)
+```
+
+### Ingestion Philosophy & Guardrails
+- **No Evasion**: **JobPulse deliberately does not attempt to bypass CAPTCHA, fingerprinting, access controls, or bot protections.** 
+- **Respectful Ingestion**: Instead of evading detection, **JobPulse uses respectful pacing, bounded retries, server-provided Retry-After handling, and circuit breaking to avoid unnecessarily stressing a source.**
+- **Why this Source?**: The WeWorkRemotely public RSS feed was selected because the assignment explicitly permits a public job-board RSS/API source, and the goal is to demonstrate ingestion resilience without attempting to circumvent authentication, CAPTCHA, or anti-bot protections on platforms such as LinkedIn or Indeed.
+- **Where I Stop**: JobPulse does not attempt to bypass CAPTCHA, authentication, fingerprinting defenses, robots/access controls, or other anti-bot mechanisms. If a source blocks requests, the system backs off, opens its circuit, records the failure, and falls back to another permitted source/adapter rather than escalating the scraping technique.
 
 ---
 
-## 4. Local Setup & Installation
+## 4. Fallback Strategy (Plan B)
+
+If the primary WeWorkRemotely RSS feed blocks requests or undergoes a breaking schema change, JobPulse relies on a modular, multi-source fallback approach:
+
+```text
+Primary RSS Source (WeWorkRemotely)
+               │
+               ▼ (Blocks / Fails / Circuit Trips)
+        Circuit OPEN
+               │
+               ▼
+   Fallback to Secondary RSS/API Adapter (e.g. RemoteOK RSS or StackOverflow API)
+               │
+               ▼ (All Sources Open)
+   Fallback to Local Database Cache (Serve stale listings with warning banner)
+```
+
+Because JobPulse is built around a structured adapter interface, new adapters conforming to the same interface can be added to the engine registry without altering any core logic. When the primary adapter fails, the scheduler can iterate down the registry to query alternative permitted public endpoints.
+
+---
+
+## 5. Local Setup & Installation
 
 ### Environment Variables (.env)
 Create a `.env` file in `/backend` using these parameters:

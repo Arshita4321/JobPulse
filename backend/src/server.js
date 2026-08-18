@@ -4,7 +4,8 @@ import { config } from './config/env.js';
 import { initializeDatabase } from './db/init.js';
 import { apiRouter } from './routes/apiRouter.js';
 import { sandboxRouter } from './routes/sandboxRouter.js';
-import { startScheduler } from './scheduler/ingestionScheduler.js';
+import { startScheduler, stopScheduler } from './scheduler/ingestionScheduler.js';
+import { pool } from './db/index.js';
 
 const app = express();
 
@@ -37,6 +38,8 @@ app.use((err, req, res, next) => {
   });
 });
 
+let serverInstance = null;
+
 // Bootstrap application
 const startServer = async () => {
   try {
@@ -46,7 +49,7 @@ const startServer = async () => {
     // Start background ingestion cron
     startScheduler();
 
-    app.listen(config.port, () => {
+    serverInstance = app.listen(config.port, () => {
       console.log(`==================================================`);
       console.log(`  JobPulse Server Listening on Port: ${config.port}`);
       console.log(`  Environment: ${config.nodeEnv}`);
@@ -58,5 +61,35 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Graceful Shutdown Handler
+const handleGracefulShutdown = async (signal) => {
+  console.log(`\n[SHUTDOWN] ${signal} signal received. Starting graceful shutdown...`);
+  
+  // 1. Stop accepting new cron ticks
+  stopScheduler();
+  
+  // 2. Close HTTP server connections
+  if (serverInstance) {
+    console.log('[SHUTDOWN] Closing HTTP server...');
+    await new Promise((resolve) => serverInstance.close(resolve));
+    console.log('[SHUTDOWN] HTTP server closed.');
+  }
+  
+  // 3. End connection pool to database
+  try {
+    console.log('[SHUTDOWN] Closing database pool connection...');
+    await pool.end();
+    console.log('[SHUTDOWN] Database pool connections ended.');
+  } catch (err) {
+    console.error('[SHUTDOWN] Error closing database pool:', err.message);
+  }
+  
+  console.log('[SHUTDOWN] Graceful shutdown complete. Safe exit.');
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => handleGracefulShutdown('SIGINT'));
 
 startServer();
