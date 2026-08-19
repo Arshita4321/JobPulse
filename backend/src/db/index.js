@@ -5,8 +5,9 @@ import { config } from '../config/env.js';
 // Resolve SSL CA certificate
 let caCert = undefined;
 if (config.dbSslCa) {
-  if (config.dbSslCa.startsWith('-----BEGIN CERTIFICATE-----')) {
-    caCert = config.dbSslCa;
+  const processedCa = config.dbSslCa.replace(/\\n/g, '\n');
+  if (processedCa.startsWith('-----BEGIN CERTIFICATE-----')) {
+    caCert = processedCa;
   } else {
     try {
       caCert = fs.readFileSync(config.dbSslCa, 'utf-8');
